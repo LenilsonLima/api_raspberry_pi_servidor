@@ -1,0 +1,38 @@
+{
+  "name": "api_raspberry_pi_servidor",
+  "version": "1.0.0",
+  "description": "API central executada em um Raspberry Pi que atua como servidor principal, responsável por receber, processar e gerenciar dados enviados por outros Raspberry Pi conectados à rede, permitindo comunicação e integração entre os dispositivos.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon server.js"
+  },
+  "keywords": [
+    "raspberry-pi",
+    "api",
+    "server",
+    "iot",
+    "comunicação",
+    "sistema-distribuido",
+    "nodejs",
+    "servidor-central",
+    "edge-computing",
+    "automacao"
+  ],
+  "author": "Lenilson Lima Pantoja",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LenilsonLimaPantoja/api_raspberry_pi_servidor.git"
+  },
+  "dependencies": {
+    "axios": "^1.11.0",
+    "body-parser": "^2.2.0",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "morgan": "^1.10.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
