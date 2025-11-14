@@ -63,7 +63,7 @@ EOF
 sudo tee /etc/hostapd/hostapd.conf > /dev/null <<EOF
 interface=wlan0
 driver=nl80211
-ssid=Balanca-AP
+ssid=SERVIDOR-RASP
 hw_mode=g
 channel=7
 wmm_enabled=0
