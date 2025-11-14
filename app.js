@@ -10,6 +10,7 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
 const caixasRoutes = require('./src/routes/caixas.routes');
+const serverRoutes = require('./src/routes/server.routes');
 
 app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
@@ -30,6 +31,7 @@ app.use((req, res, next) => {
 })
 
 app.use('/caixas', caixasRoutes);
+app.use('/server', serverRoutes);
 
 app.use((req, res, next) => {
     const error = new Error("Url não encontrada, tente novamente");
