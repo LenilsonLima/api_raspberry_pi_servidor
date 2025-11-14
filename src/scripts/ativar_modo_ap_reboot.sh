@@ -1,33 +1,35 @@
 #!/bin/bash
-# Define o interpretador do script (bash)
 
-LOG_FILE="/home/pi/Desktop/api_raspberry_pi/src/log/ativar_modo_ap_reboot.log"
+LOG_FILE="/home/raspberry-server/Desktop/api_raspberry_pi_servidor/src/log/ativar_modo_ap_reboot.log"
 exec >> "$LOG_FILE" 2>&1
-# Redireciona toda a saída (stdout e stderr) do script para o arquivo de log definido em LOG_FILE
 
-# Apaga GPIO27 (pino físico 13)
+echo "[INFO] === Iniciando script de ativação do modo AP ==="
+
+###############################################
+# 1. GPIO – DESATIVAR GPIO27 E LIGAR LED NO 22
+###############################################
+
 GPIO27=27
+LED_GPIO=22
+
+echo "[INFO] Configurando GPIOs..."
+
+# Configura GPIO27
 if [ ! -d /sys/class/gpio/gpio$GPIO27 ]; then
   echo $GPIO27 > /sys/class/gpio/export
-  sleep 1
+  sleep 0.5
 fi
-echo out > /sys/class/gpio/gpio$GPIO27/direction
-echo 0 > /sys/class/gpio/gpio$GPIO27/value
-# Exporta o GPIO27 (pino físico 13) para controle via sysfs, configura como saída e seta o valor 0 (desligado)
 
-# Configura GPIO22 (pino físico 15) para LED piscando
-LED_GPIO=22  # pino físico 15 (GPIO22)
+echo out > /sys/class/gpio/gpio$GPIO27/direction 2>/dev/null || true
+echo 0 > /sys/class/gpio/gpio$GPIO27/value 2>/dev/null || true
 
-echo "[INFO] --- Iniciando modo Access Point ---"
-# Mensagem informando que o modo Access Point está sendo iniciado
-
+# Configura GPIO22 para piscar LED
 if [ ! -d /sys/class/gpio/gpio$LED_GPIO ]; then
   echo $LED_GPIO > /sys/class/gpio/export
-  sleep 1
+  sleep 0.5
 fi
-echo out > /sys/class/gpio/gpio$LED_GPIO/direction
-# Exporta o GPIO22 (pino físico 15), configura como saída para controlar o LED
 
+echo out > /sys/class/gpio/gpio$LED_GPIO/direction
 (
   while true; do
     echo 1 > /sys/class/gpio/gpio$LED_GPIO/value
@@ -37,28 +39,46 @@ echo out > /sys/class/gpio/gpio$LED_GPIO/direction
   done
 ) &
 LED_PID=$!
-# Loop em background que faz o LED piscar a cada 0.5 segundos (liga e desliga),
-# armazenando o PID do processo para controlar depois
 
-echo "[INFO] Desconectando Wi-Fi atual e limpando configurações..."
-# Informativo que a conexão Wi-Fi atual será desconectada e configurações serão limpas
+###############################################
+# 2. BLOQUEAR WIFI AUTOMÁTICO DO BOOKWORM
+###############################################
 
-echo "[INFO] Limpando redes Wi-Fi salvas..."
-sudo bash -c 'echo -e "# wpa_supplicant.conf limpo para modo AP\n" > /etc/wpa_supplicant/wpa_supplicant.conf'
-# Sobrescreve o arquivo wpa_supplicant.conf com um conteúdo vazio comentado para limpar redes salvas
+echo "[INFO] Desativando autoconfiguração do Wi-Fi (NetworkManager)..."
 
-sudo systemctl stop wpa_supplicant
-# Para o serviço wpa_supplicant que gerencia conexões Wi-Fi
+sudo mkdir -p /etc/NetworkManager/conf.d
+sudo tee /etc/NetworkManager/conf.d/disable-wifi-managed.conf > /dev/null <<EOF
+[keyfile]
+unmanaged-devices=interface-name:wlan0
+EOF
 
-sudo rm -f /etc/hostapd/hostapd.conf
-sudo rm -f /etc/dnsmasq.conf
-# Remove configurações antigas dos serviços hostapd e dnsmasq
+sudo systemctl restart NetworkManager
 
-echo "[INFO] Criando arquivo hostapd.conf..."
+sudo systemctl disable systemd-networkd-wait-online.service || true
+sudo systemctl stop systemd-networkd-wait-online.service || true
+
+###############################################
+# 3. LIMPAR WPA_SUPPLICANT CORRETAMENTE
+###############################################
+
+echo "[INFO] Limpando wpa_supplicant.conf..."
+
+sudo bash -c 'cat > /etc/wpa_supplicant/wpa_supplicant.conf <<EOF
+country=BR
+ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+update_config=1
+EOF'
+
+sudo systemctl stop wpa_supplicant || true
+
+###############################################
+# 4. CRIAR CONFIGURAÇÕES HOSTAPD/DNSMASQ
+###############################################
+
+echo "[INFO] Criando hostapd.conf..."
 sudo tee /etc/default/hostapd > /dev/null <<EOF
 DAEMON_CONF="/etc/hostapd/hostapd.conf"
 EOF
-# Define no arquivo /etc/default/hostapd qual arquivo de configuração o hostapd deve usar
 
 sudo tee /etc/hostapd/hostapd.conf > /dev/null <<EOF
 interface=wlan0
@@ -75,45 +95,47 @@ wpa_passphrase=12345678
 wpa_key_mgmt=WPA-PSK
 rsn_pairwise=CCMP
 EOF
-# Cria o arquivo de configuração do hostapd para transformar wlan0 em um Access Point com SSID "Balanca-AP" e senha "12345678"
 
-echo "[INFO] Criando arquivo dnsmasq.conf..."
+echo "[INFO] Criando dnsmasq.conf..."
 sudo tee /etc/dnsmasq.conf > /dev/null <<EOF
 interface=wlan0
 dhcp-range=192.168.0.50,192.168.0.150,12h
 EOF
-# Cria arquivo de configuração do dnsmasq que gerencia DHCP para distribuir IPs entre 192.168.0.50 e 192.168.0.150 na interface wlan0
+
+###############################################
+# 5. IP FIXO
+###############################################
 
 echo "[INFO] Configurando IP fixo para wlan0..."
+
 sudo sed -i '/interface wlan0/,+4d' /etc/dhcpcd.conf
-# Remove configurações antigas referentes a wlan0 do arquivo dhcpcd.conf para evitar conflito
 
 sudo tee -a /etc/dhcpcd.conf > /dev/null <<EOF
 interface wlan0
 static ip_address=192.168.0.1/24
 nohook wpa_supplicant
 EOF
-# Adiciona configuração para wlan0 usar IP fixo 192.168.0.1 com máscara /24 e para não iniciar wpa_supplicant nessa interface
 
-echo "[INFO] Reiniciando serviços..."
+###############################################
+# 6. REINÍCIO DOS SERVIÇOS
+###############################################
+
+echo "[INFO] Reiniciando serviços AP..."
+
 sudo systemctl restart dhcpcd
-sudo systemctl unmask hostapd
+sudo systemctl unmask hostapd || true
 sudo systemctl enable hostapd
 sudo systemctl enable dnsmasq
 sudo systemctl restart hostapd
 sudo systemctl restart dnsmasq
-# Reinicia o serviço de gerenciamento de DHCP (dhcpcd),
-# remove possíveis bloqueios (unmask) no hostapd,
-# habilita os serviços hostapd e dnsmasq para iniciarem junto com o sistema,
-# e reinicia os serviços hostapd e dnsmasq para aplicar as configurações
 
-echo "[SUCESSO] Modo Access Point configurado com sucesso. Reiniciando em 1 segundo..."
-sleep 1
-# Mensagem de sucesso e pausa de 1 segundo antes de reiniciar
+###############################################
+# 7. FINALIZAÇÃO
+###############################################
+
+echo "[SUCESSO] Modo Access Point ativado. Reiniciando..."
 
 kill $LED_PID
 echo 0 > /sys/class/gpio/gpio$LED_GPIO/value
-# Para o processo que estava piscando o LED e desliga o LED
 
 sudo reboot
-# Reinicia o Raspberry Pi para aplicar as mudanças
