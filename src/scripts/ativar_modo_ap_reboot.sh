@@ -6,42 +6,7 @@ exec >> "$LOG_FILE" 2>&1
 echo "[INFO] === Iniciando script de ativação do modo AP ==="
 
 ###############################################
-# 1. GPIO – DESATIVAR GPIO27 E LIGAR LED NO 22
-###############################################
-
-GPIO27=27
-LED_GPIO=22
-
-echo "[INFO] Configurando GPIOs..."
-
-# Configura GPIO27
-if [ ! -d /sys/class/gpio/gpio$GPIO27 ]; then
-  echo $GPIO27 > /sys/class/gpio/export
-  sleep 0.5
-fi
-
-echo out > /sys/class/gpio/gpio$GPIO27/direction 2>/dev/null || true
-echo 0 > /sys/class/gpio/gpio$GPIO27/value 2>/dev/null || true
-
-# Configura GPIO22 para piscar LED
-if [ ! -d /sys/class/gpio/gpio$LED_GPIO ]; then
-  echo $LED_GPIO > /sys/class/gpio/export
-  sleep 0.5
-fi
-
-echo out > /sys/class/gpio/gpio$LED_GPIO/direction
-(
-  while true; do
-    echo 1 > /sys/class/gpio/gpio$LED_GPIO/value
-    sleep 0.5
-    echo 0 > /sys/class/gpio/gpio$LED_GPIO/value
-    sleep 0.5
-  done
-) &
-LED_PID=$!
-
-###############################################
-# 2. BLOQUEAR WIFI AUTOMÁTICO DO BOOKWORM
+# 1. BLOQUEAR WIFI AUTOMÁTICO DO BOOKWORM
 ###############################################
 
 echo "[INFO] Desativando autoconfiguração do Wi-Fi (NetworkManager)..."
@@ -58,7 +23,7 @@ sudo systemctl disable systemd-networkd-wait-online.service || true
 sudo systemctl stop systemd-networkd-wait-online.service || true
 
 ###############################################
-# 3. LIMPAR WPA_SUPPLICANT CORRETAMENTE
+# 2. LIMPAR WPA_SUPPLICANT CORRETAMENTE
 ###############################################
 
 echo "[INFO] Limpando wpa_supplicant.conf..."
@@ -72,7 +37,7 @@ EOF'
 sudo systemctl stop wpa_supplicant || true
 
 ###############################################
-# 4. CRIAR CONFIGURAÇÕES HOSTAPD/DNSMASQ
+# 3. CRIAR CONFIGURAÇÕES HOSTAPD/DNSMASQ
 ###############################################
 
 echo "[INFO] Criando hostapd.conf..."
@@ -99,11 +64,11 @@ EOF
 echo "[INFO] Criando dnsmasq.conf..."
 sudo tee /etc/dnsmasq.conf > /dev/null <<EOF
 interface=wlan0
-dhcp-range=192.168.0.50,192.168.0.150,12h
+dhcp-range=10.42.0.50,10.42.0.150,12h
 EOF
 
 ###############################################
-# 5. IP FIXO
+# 4. IP FIXO
 ###############################################
 
 echo "[INFO] Configurando IP fixo para wlan0..."
@@ -112,12 +77,12 @@ sudo sed -i '/interface wlan0/,+4d' /etc/dhcpcd.conf
 
 sudo tee -a /etc/dhcpcd.conf > /dev/null <<EOF
 interface wlan0
-static ip_address=192.168.0.1/24
+static ip_address=10.42.0.1/24
 nohook wpa_supplicant
 EOF
 
 ###############################################
-# 6. REINÍCIO DOS SERVIÇOS
+# 5. REINÍCIO DOS SERVIÇOS
 ###############################################
 
 echo "[INFO] Reiniciando serviços AP..."
@@ -130,12 +95,8 @@ sudo systemctl restart hostapd
 sudo systemctl restart dnsmasq
 
 ###############################################
-# 7. FINALIZAÇÃO
+# 6. FINALIZAÇÃO
 ###############################################
 
 echo "[SUCESSO] Modo Access Point ativado. Reiniciando..."
-
-kill $LED_PID
-echo 0 > /sys/class/gpio/gpio$LED_GPIO/value
-
 sudo reboot

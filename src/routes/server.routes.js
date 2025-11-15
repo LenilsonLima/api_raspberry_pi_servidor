@@ -2,8 +2,8 @@ const express = require('express');
 
 const routes = express.Router();
 
-const ativarModoAPComReboot = require('../controllers/ativarModoAPComReboot');
+const serverControllers = require('../controllers/server.controllers');
 
-routes.get('/mode-ap-reboot', ativarModoAPComReboot.ativarModoAPComReboot);
+routes.get('/modo-ap-reboot-server', serverControllers.ativarModoAPComRebootServer);
 
 module.exports = routes;
